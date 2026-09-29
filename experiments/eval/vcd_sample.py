@@ -122,7 +122,9 @@ def sample(
         context_start_index = model_kwargs.get('img_end_idx')+model_kwargs.get("question_len")+model_kwargs.get("prompt_len")
         if outputs.hidden_states[-1].size(1) > 1:
             context_logits = exponential_weighted_sum_dim1(self.lm_head(outputs.hidden_states[-1][:,context_start_index:,:])).to(outputs.logits.device)
-        next_token_logits = next_token_logits + context_logits 
+            next_token_logits = next_token_logits + context_logits
+            # Context logits are available only during the prefill step,
+            # when the full prompt hidden states are returned. 
         
         ## For contrastive decoding initial
         use_cd = model_kwargs.get("images_cd") != None
