@@ -77,6 +77,10 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         ret_sim: Optional[float] = None,
         att_alpha: Optional[float] = None,
         return_dict: Optional[bool] = None,
+
+        attn_adjustment: Optional[str] = None,
+        lse_alpha: Optional[float] = None,
+
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -129,7 +133,28 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
-        llama_modify(self.model, 0, 32, True, kwargs['att_alpha'], True, kwargs['img_start_idx'], kwargs['img_end_idx'], kwargs['question_len'], kwargs['prompt_len'], kwargs['context_len'], kwargs['ret_sim'])
+        llama_modify(
+            self.model,
+            0,
+            32,
+            True,
+            kwargs["att_alpha"],
+            True,
+            kwargs["img_start_idx"],
+            kwargs["img_end_idx"],
+            kwargs["question_len"],
+            kwargs["prompt_len"],
+            kwargs["context_len"],
+            kwargs["ret_sim"],
+            attn_adjustment=kwargs.get(
+                "attn_adjustment",
+                "original",
+            ),
+            lse_alpha=kwargs.get(
+                "lse_alpha",
+                0.2,
+            ),
+        )
         if past_key_values:
             input_ids = input_ids[:, -1:]
 
@@ -154,7 +179,28 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
         
-        llama_modify(self.model, 0, 32, False, kwargs['att_alpha'], False, kwargs['img_start_idx'], kwargs['img_end_idx'], kwargs['question_len'], kwargs['prompt_len'], kwargs['context_len'], kwargs['ret_sim'])
+        llama_modify(
+            self.model,
+            0,
+            32,
+            False,
+            kwargs["att_alpha"],
+            False,
+            kwargs["img_start_idx"],
+            kwargs["img_end_idx"],
+            kwargs["question_len"],
+            kwargs["prompt_len"],
+            kwargs["context_len"],
+            kwargs["ret_sim"],
+            attn_adjustment=kwargs.get(
+                "attn_adjustment",
+                "original",
+            ),
+            lse_alpha=kwargs.get(
+                "lse_alpha",
+                0.2,
+            ),
+        )
         if past_key_values:
             input_ids = input_ids[:, -1:]
 

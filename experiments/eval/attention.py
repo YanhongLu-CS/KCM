@@ -60,6 +60,74 @@ def apply_original_attention_adjustment(
 
     return attn_weights
 
+def apply_lse_attention_adjustment(
+    attn_weights,
+    img_start_idx,
+    img_end_idx,
+    context_start_idx,
+    context_end_idx,
+    lse_alpha,
+):
+    """
+    Apply an LSE-based attention adjustment.
+
+    For each attention head and the last query token, define
+
+        delta = logsumexp(image_logits) - logsumexp(context_logits)
+
+    which equals the log ratio between the total softmax attention mass
+    assigned to the image region and the context region.
+
+    The logits are adjusted symmetrically:
+
+        image_logits   -= lse_alpha * delta / 2
+        context_logits += lse_alpha * delta / 2
+
+    Therefore the new log attention-mass ratio satisfies
+
+        delta_new = (1 - lse_alpha) * delta.
+    """
+
+    image_logits = attn_weights[
+        :, :, -1, img_start_idx:img_end_idx
+    ]
+
+    context_logits = attn_weights[
+        :, :, -1, context_start_idx:context_end_idx
+    ]
+
+    image_lse = torch.logsumexp(
+        image_logits,
+        dim=-1,
+        keepdim=False,
+    )
+
+    context_lse = torch.logsumexp(
+        context_logits,
+        dim=-1,
+        keepdim=False,
+    )
+
+    delta = image_lse - context_lse
+
+    correction = lse_alpha * delta / 2.0
+
+    attn_weights[
+        :, :, -1, img_start_idx:img_end_idx
+    ] = (
+        image_logits
+        - correction[:, :, None]
+    )
+
+    attn_weights[
+        :, :, -1, context_start_idx:context_end_idx
+    ] = (
+        context_logits
+        + correction[:, :, None]
+    )
+
+    return attn_weights
+
 def llama_new_forward(
     self,
     hidden_states: torch.Tensor,
@@ -146,13 +214,35 @@ def llama_new_forward(
         use_cfg = False
 
     if use_attn:
-        attn_weights = apply_original_attention_adjustment(
-            attn_weights=attn_weights,
-            img_start_idx=img_start_idx,
-            img_end_idx=img_end_idx,
-            context_start_idx=context_start_idx,
-            context_end_idx=context_end_idx,
+        attn_adjustment = getattr(
+            self,
+            "attn_adjustment",
+            "original",
         )
+
+        if attn_adjustment == "original":
+            attn_weights = apply_original_attention_adjustment(
+                attn_weights=attn_weights,
+                img_start_idx=img_start_idx,
+                img_end_idx=img_end_idx,
+                context_start_idx=context_start_idx,
+                context_end_idx=context_end_idx,
+            )
+
+        elif attn_adjustment == "lse":
+            attn_weights = apply_lse_attention_adjustment(
+                attn_weights=attn_weights,
+                img_start_idx=img_start_idx,
+                img_end_idx=img_end_idx,
+                context_start_idx=context_start_idx,
+                context_end_idx=context_end_idx,
+                lse_alpha=self.lse_alpha,
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown attention adjustment: {attn_adjustment}"
+            )
 
     
 
@@ -208,12 +298,30 @@ def llama_new_mlp(self, x):
     return down_proj
 
 
-def llama_modify(model, start_layer, end_layer, use_attn, alpha, use_mlp,
-                 img_start_idx, img_end_idx, question_len, prompt_len, context_len, ret_sim):
+def llama_modify(
+    model,
+    start_layer,
+    end_layer,
+    use_attn,
+    alpha,
+    use_mlp,
+    img_start_idx,
+    img_end_idx,
+    question_len,
+    prompt_len,
+    context_len,
+    ret_sim,
+    attn_adjustment="original",
+    lse_alpha=0.2,
+):
     modify_layers = list(range(start_layer, end_layer))
     for i in modify_layers:
         model.layers[i].self_attn.use_attn = use_attn
         model.layers[i].self_attn.alpha = alpha
+
+        model.layers[i].self_attn.attn_adjustment = attn_adjustment
+        model.layers[i].self_attn.lse_alpha = lse_alpha
+        
         model.layers[i].self_attn.img_start_idx = img_start_idx
         model.layers[i].self_attn.img_end_idx = img_end_idx
         model.layers[i].self_attn.question_len = question_len
