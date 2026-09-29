@@ -4,7 +4,6 @@ from tqdm import tqdm
 import sys
 import os
 import pandas as pd
-os.environ["CUDA_VISIBLE_DEVICES"] = '2,3'
 import torch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -100,6 +99,10 @@ def eval_model(args):
                 context_len = context_len,
                 ret_sim = 0.9,
                 att_alpha = args.att_alpha,
+
+                attn_adjustment=args.attn_adjustment,
+                lse_alpha=args.lse_alpha,
+
                 img_start_idx = 35,
                 img_end_idx = 611,
                 do_sample=True,
@@ -152,6 +155,20 @@ if __name__ == "__main__":
     parser.add_argument("--top_k", type=int, default=None)
     parser.add_argument("--cd_beta", type=float, default=0.7)
     parser.add_argument("--att_alpha", type=float, default=0.4)
+
+    parser.add_argument(
+    "--attn-adjustment",
+    type=str,
+    choices=["original", "lse"],
+    default="original",
+    )
+
+    parser.add_argument(
+        "--lse-alpha",
+        type=float,
+        default=0.2,
+    )
+
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     set_seed(args.seed)
