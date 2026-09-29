@@ -132,10 +132,10 @@ def main():
                 dataset = json.load(fin)
     elif args.dataset == "infoseek":
         if args.cleaned_model is not None:
-            with open(f"/workspace/12_WVQA/infoseek_mc.json", "r") as fin:
+            with open(f"data/eval_data/mc/infoseek_mc.json", "r") as fin:
                 dataset = json.load(fin)
         else:
-            with open("/workspace/12_WVQA/infoseek_mc.json", "r") as fin:
+            with open("data/eval_data/mc/infoseek_mc.json", "r") as fin:
                 dataset = json.load(fin)
         
     if args.input_file_2 is None:
