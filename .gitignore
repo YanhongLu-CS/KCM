@@ -1,1 +1,15 @@
 data/wiki/wiki_with_image.npy
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment / editor
+.env
+.vscode/
+.idea/
+
+# Experiment outputs
+outputs/
+logs/
+*.log
