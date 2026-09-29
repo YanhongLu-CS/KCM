@@ -8,6 +8,58 @@ import torch.nn.functional as F
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 from transformers.models.llama.modeling_llama import LlamaAttention
 
+def apply_original_attention_adjustment(
+    attn_weights,
+    img_start_idx,
+    img_end_idx,
+    context_start_idx,
+    context_end_idx,
+):
+    """
+    Apply the original KCM attention adjustment.
+
+    This function intentionally preserves the original implementation:
+    1. Compute mean pre-softmax logits over image and context regions.
+    2. Compute the absolute ratio between the two means.
+    3. Clamp the ratio separately for image and context scaling.
+    4. Divide the corresponding pre-softmax logits by the scaling factors.
+
+    Only the last query token is modified, independently for each attention head.
+    """
+    alpha_img = attn_weights[
+        :, :, -1, img_start_idx:img_end_idx
+    ].mean(dim=-1, keepdim=False)
+
+    alpha_context = attn_weights[
+        :, :, -1, context_start_idx:context_end_idx
+    ].mean(dim=-1, keepdim=False)
+
+    alpha_ori = abs(alpha_img / alpha_context)
+
+    alpha_img = torch.clamp(
+        alpha_ori,
+        min=1.1,
+        max=1.3,
+    )
+
+    alpha_context = torch.clamp(
+        alpha_ori,
+        min=0.95,
+        max=1.0,
+    )
+
+    attn_weights[:, :, -1, img_start_idx:img_end_idx] = (
+        attn_weights[:, :, -1, img_start_idx:img_end_idx]
+        / alpha_img[:, :, None]
+    )
+
+    attn_weights[:, :, -1, context_start_idx:context_end_idx] = (
+        attn_weights[:, :, -1, context_start_idx:context_end_idx]
+        / alpha_context[:, :, None]
+    )
+
+    return attn_weights
+
 def llama_new_forward(
     self,
     hidden_states: torch.Tensor,
@@ -94,19 +146,13 @@ def llama_new_forward(
         use_cfg = False
 
     if use_attn:
-        alpha_img = attn_weights[:, :, -1, img_start_idx:img_end_idx].mean(dim=-1, keepdim=False)
-        alpha_context = attn_weights[:, :, -1, context_start_idx:context_end_idx].mean(dim=-1, keepdim=False)
-        # print('attention', alpha_img.mean(), alpha_context.mean())
-        alpha_ori = abs(alpha_img / alpha_context)
-        # print(alpha_ori)
-        # alpha = torch.clamp(alpha, min=0.9, max=1.3)
-        alpha_img = torch.clamp(alpha_ori, min=1.1, max=1.3)
-        alpha_context = torch.clamp(alpha_ori, min=0.95, max=1.0)
-
-        attn_weights[:, :, -1, img_start_idx:img_end_idx] = (
-            attn_weights[:, :, -1, img_start_idx:img_end_idx] / alpha_img[:,:,None])
-        attn_weights[:, :, -1, context_start_idx:context_end_idx] = (
-            attn_weights[:, :, -1, context_start_idx:context_end_idx] / alpha_context[:,:,None])
+        attn_weights = apply_original_attention_adjustment(
+            attn_weights=attn_weights,
+            img_start_idx=img_start_idx,
+            img_end_idx=img_end_idx,
+            context_start_idx=context_start_idx,
+            context_end_idx=context_end_idx,
+        )
 
     
 
